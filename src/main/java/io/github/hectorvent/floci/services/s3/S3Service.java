@@ -638,7 +638,7 @@ public class S3Service {
 
     public S3Object copyObject(String sourceBucket, String sourceKey,
                                String destBucket, String destKey, String versionId) {
-        return copyObject(sourceBucket, sourceKey, destBucket, destKey, new CopyObjectOptions());
+        return copyObject(sourceBucket, sourceKey, destBucket, destKey, null, new CopyObjectOptions());
     }
 
     public S3Object copyObject(String sourceBucket, String sourceKey,
@@ -2018,9 +2018,8 @@ public class S3Service {
         }
     }
 
-    private S3Object copyS3Object( String sourceBucket, String sourceKey,
-                          String destBucket, String destKey,S3Object source, CopyObjectOptions options)
-    {
+    private S3Object copyS3Object(String sourceBucket, String sourceKey,
+                          String destBucket, String destKey, S3Object source, CopyObjectOptions options) {
         ensureBucketExists(destBucket);
         CopyObjectOptions effectiveOptions = options != null ? options : new CopyObjectOptions();
         String normalizedServerSideEncryption = normalizeServerSideEncryption(effectiveOptions.getServerSideEncryption());

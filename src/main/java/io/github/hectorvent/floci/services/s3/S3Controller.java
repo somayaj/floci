@@ -2213,8 +2213,20 @@ public class S3Controller {
     }
 
     /**
-     * Object key and optional source versionId from the segment after {@code bucket/} in
-     * {@code x-amz-copy-source} (already UTF-8 URL-decoded as a whole; query values may still be encoded).
+     * Splits the {@code CopyObject}/{@code UploadPartCopy} copy-source remainder into S3 object key and
+     * optional source {@code versionId}.
+     * <ul>
+     *   <li><b>Input:</b> decoded {@code x-amz-copy-source} with bucket already removed (substring after
+     *   the {@code '/'} that follows the bucket). Both {@code handleCopyObject} and
+     *   {@code handleUploadPartCopy} compute this as {@code pathAfterBucket}.</li>
+     *   <li><b>Key:</b> substring before the first {@code '?'} if any; keys may contain more {@code '/'}
+     *   segments.</li>
+     *   <li><b>{@code versionId}:</b> first {@code versionId} query pair, when present (raw value after
+     *   {@code '='}). Other query pairs are ignored.</li>
+     * </ul>
+     *
+     * @param pathAfterBucket object key alone, or key with query (for example {@code dir/k.txt?versionId=uuid})
+     * @return key without trailing query plus {@code versionId} value, or {@code null} version when absent
      */
     private ParsedCopySource parseCopySourceObject(String pathAfterBucket) {
         int queryStart = pathAfterBucket.indexOf('?');
@@ -2232,11 +2244,7 @@ public class S3Controller {
             String name = pair.substring(0, eq);
             String value = pair.substring(eq + 1);
             if ("versionId".equals(name)) {
-                try {
-                    versionId = URLDecoder.decode(value, StandardCharsets.UTF_8);
-                } catch (IllegalArgumentException e) {
-                    versionId = value;
-                }
+                versionId = value;
                 break;
             }
         }
