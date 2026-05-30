@@ -9,6 +9,7 @@ import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.StructuredTaskScope;
 
 /**
  * TCP auth proxy for a single ElastiCache replication group.
@@ -51,6 +52,46 @@ public class ElastiCacheAuthProxy {
         this.backendPort = backendPort;
         this.passwordValidator = passwordValidator;
         this.sigV4Validator = sigV4Validator;
+    }
+
+    private static void relay(Socket from, Socket to) {
+        byte[] buf = new byte[8192];
+        try {
+            InputStream in = from.getInputStream();
+            OutputStream out = to.getOutputStream();
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                out.write(buf, 0, n);
+                out.flush();
+            }
+            to.shutdownOutput();
+        } catch (IOException ignored) {
+            // Normal when either side closes the connection
+        }
+    }
+
+    private static void resendCommand(String[] args, OutputStream out) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        sb.append("*").append(args.length).append("\r\n");
+        for (String arg : args) {
+            byte[] bytes = arg.getBytes(StandardCharsets.UTF_8);
+            sb.append("$").append(bytes.length).append("\r\n");
+            out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+            sb.setLength(0);
+            out.write(bytes);
+            out.write("\r\n".getBytes(StandardCharsets.UTF_8));
+        }
+        if (sb.length() > 0) {
+            out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+        }
+        out.flush();
+    }
+
+    private static void closeQuietly(Socket s) {
+        try {
+            s.close();
+        } catch (IOException ignored) {
+        }
     }
 
     public void start(int proxyPort) throws IOException {
@@ -165,55 +206,27 @@ public class ElastiCacheAuthProxy {
      * relays under load can stall delivery of backend responses (e.g. PING/PONG) to the client.
      */
     private void bridge(Socket client, Socket backend) {
-        Thread t1 = Thread.ofPlatform().daemon(true).name("ec-relay-c2b-" + groupId)
-                .start(() -> relay(client, backend));
-        Thread t2 = Thread.ofPlatform().daemon(true).name("ec-relay-b2c-" + groupId)
-                .start(() -> relay(backend, client));
-        try {
-            t1.join();
-            t2.join();
+        var threadFactory = Thread.ofPlatform()
+                .daemon(true)
+                .name("ec-relay-" + groupId + "-", 0)
+                .factory();
+
+        try (var scope = StructuredTaskScope.open(
+                StructuredTaskScope.Joiner.<Void>awaitAllSuccessfulOrThrow(),
+                cfg -> cfg.withThreadFactory(threadFactory))) {
+            scope.fork(() -> { relay(client, backend);
+                return null;
+            });
+            scope.fork(() -> { relay(backend, client);
+                return null;
+            });
+            scope.join();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
             closeQuietly(client);
             closeQuietly(backend);
         }
-    }
-
-    private static void relay(Socket from, Socket to) {
-        byte[] buf = new byte[8192];
-        try {
-            InputStream in = from.getInputStream();
-            OutputStream out = to.getOutputStream();
-            int n;
-            while ((n = in.read(buf)) != -1) {
-                out.write(buf, 0, n);
-                out.flush();
-            }
-        } catch (IOException ignored) {
-            // Normal when either side closes the connection
-        }
-    }
-
-    private static void resendCommand(String[] args, OutputStream out) throws IOException {
-        StringBuilder sb = new StringBuilder();
-        sb.append("*").append(args.length).append("\r\n");
-        for (String arg : args) {
-            byte[] bytes = arg.getBytes(StandardCharsets.UTF_8);
-            sb.append("$").append(bytes.length).append("\r\n");
-            out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
-            sb.setLength(0);
-            out.write(bytes);
-            out.write("\r\n".getBytes(StandardCharsets.UTF_8));
-        }
-        if (sb.length() > 0) {
-            out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
-        }
-        out.flush();
-    }
-
-    private static void closeQuietly(Socket s) {
-        try { s.close(); } catch (IOException ignored) {}
     }
 
     /**
