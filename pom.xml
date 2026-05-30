@@ -14,6 +14,8 @@
 
     <properties>
         <maven.compiler.release>25</maven.compiler.release>
+        <maven.compiler.compilerArgs>--enable-preview</maven.compiler.compilerArgs>
+        <argLine>--enable-preview</argLine>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <quarkus.platform.version>3.34.6</quarkus.platform.version>
         <apicurio.version>2.6.9.Final</apicurio.version>
@@ -231,6 +233,9 @@
                 <artifactId>quarkus-maven-plugin</artifactId>
                 <version>${quarkus.platform.version}</version>
                 <extensions>true</extensions>
+                <configuration>
+                    <jvmArgs>--enable-preview</jvmArgs>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>
@@ -247,6 +252,7 @@
                 <version>3.15.0</version>
                 <configuration>
                     <release>${maven.compiler.release}</release>
+                    <compilerArgs>${maven.compiler.compilerArgs}</compilerArgs>
                 </configuration>
             </plugin>
             <plugin>
@@ -254,6 +260,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.5</version>
                 <configuration>
+                    <argLine>${argLine}</argLine>
                     <systemPropertyVariables>
                         <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
                     </systemPropertyVariables>
